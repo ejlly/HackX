@@ -1,0 +1,5 @@
+Compile with make
+
+client executable reads all lines until empty line is found
+server echoes back everything that is sent to him until ^C signal is sent to the executable
+fancyclient sends only one line to the server, then blocks until it has received the answer
