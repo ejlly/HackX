@@ -58,27 +58,28 @@ int main(int argc, char *argv[])
 	//fill the data section
 	strncpy(data, data_string, strlen(data_string));
 	
-
+	int const size_iph = sizeof(struct iphdr), size_udph = sizeof(struct udphdr), size_pseudo = sizeof(struct pseudo_udp_header), size_data = strlen(data);
+	int const tot_size = sizeof(struct iphdr) + size_udph + size_data;
 
 
 	//fill the IP header here
 	iph->version = 4;
 	iph->ihl = 5;
 	iph->tos = 0;
-	iph->tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data));
+	iph->tot_len = htons(size_iph + size_udph + size_data);
 	iph->id = 0; //random value
 	iph->frag_off = htons(0);
 	iph->ttl = 128;
 	iph->protocol = 17;
 	iph->saddr = inet_addr(source_ip); //no htonl
 	iph->daddr = inet_addr(dest_ip); //no htonl
-	iph->check = htons(checksum((short unsigned int *) iph, sizeof(struct iphdr)));
+	iph->check = htons(checksum((short unsigned int *) iph, size_iph));
 
 
 	//fill the UDP header
 	udph->source = htons(SRC_PORT);
 	udph->dest = htons(DEST_PORT);
-	udph->len = htons(sizeof(struct udphdr) + strlen(data));
+	udph->len = htons(size_udph + size_data);
 	udph->check = 0;
 
 	psh.source_address = iph->saddr;
@@ -86,8 +87,7 @@ int main(int argc, char *argv[])
 	psh.protocol = iph->protocol;
 	psh.udp_length = udph->len;
 
-	int const size_udph = sizeof(struct udphdr), size_pseudo = sizeof(struct pseudo_udp_header), size_data = strlen(data);
-	int const tot_size = sizeof(struct iphdr) + size_udph + size_data;
+
 	
 	//printf("total msg size : %d\n", tot_size);
 
