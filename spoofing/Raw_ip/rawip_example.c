@@ -23,7 +23,7 @@
 
 #define DEST_IP "178.98.18.1" //set your destination ip here
 #define DEST_PORT 5555 //set the destination port here
-#define TEST_STRING "you've been spoofed" //a test string as packet payload, min 8 bits
+#define TEST_STRING "you've been spoofed, and it was a pleasure" //a test string as packet payload, min 8 bits
 
 int main(int argc, char *argv[])
 {
@@ -72,13 +72,14 @@ int main(int argc, char *argv[])
 	iph->protocol = 17;
 	iph->saddr = inet_addr(source_ip); //no htonl
 	iph->daddr = inet_addr(dest_ip); //no htonl
-	iph->check = checksum((short unsigned int *) iph, sizeof(struct iphdr));
+	iph->check = htons(checksum((short unsigned int *) iph, sizeof(struct iphdr)));
 
 
 	//fill the UDP header
 	udph->source = htons(SRC_PORT);
 	udph->dest = htons(DEST_PORT);
-	udph->len = htons(sizeof(struct udphdr) + sizeof(data));
+	udph->len = htons(sizeof(struct udphdr) + strlen(data));
+	udph->check = 0;
 
 	psh.source_address = iph->saddr;
 	psh.dest_address = iph->daddr;
@@ -93,13 +94,14 @@ int main(int argc, char *argv[])
 	
 
 	//checksum calculation
+	
 	char *check_calc = malloc(size_udph + size_pseudo + size_data);
 	
-	memcpy(check_calc, (char *) &psh, size_pseudo);
-	memcpy(check_calc + size_pseudo, (char *) udph, size_udph);
+	memcpy(check_calc, &psh, size_pseudo);
+	memcpy(check_calc + size_pseudo, udph, size_udph);
 	memcpy(check_calc + size_pseudo + size_udph, data, size_data);
 
-	udph->check = htons(checksum((short unsigned int*) check_calc, size_udph + size_pseudo + size_data));
+	udph->check = checksum((short unsigned int*) check_calc, size_udph + size_pseudo + size_data);
 
 	//send the packet
 	
