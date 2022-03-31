@@ -41,6 +41,8 @@ This is the code, and it corresponds to the one shown on the internet browser
 We put the whole website code inside a "website" variable.
 It is then looped through to generate all the necessary commands (a single command is too big, so the website code is split into several commands)
 
+The command used is first an "echo" of some string into the file (thus, the file is non-empty and a "sed" that replaces EOF "$" (hence the >sed 's/$/ARBITRARY_TEXT/') with our string will work just fine to append all the website code
+
 Thus, only changing the website variable allows one to put arbitrary website code, very easily (with the website_translator function)
 
 <!DOCTYPE html>
