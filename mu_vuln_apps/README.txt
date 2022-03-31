@@ -62,3 +62,5 @@ Just one remark, the "mu" greek letter is coded by "&#956" in html, so we change
 I also added my own name "Charles Nabbout", as required
 
 We then reload the page on the webbrowser, and everything works !
+
+NB : I haven't implemented yet escaping all characters that "sed" reads, but it works on most instances
