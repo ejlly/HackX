@@ -12,6 +12,8 @@
 
 #include <errno.h>
 
+#define DNS_SERVER "1.2.3.4"
+
 #define DEST_ADDRESS "255.255.255.255"
 #define SOURCE_ADDRESS "0.0.0.1"
 #define SRC_PORT 68
@@ -111,6 +113,8 @@ unsigned short checksum(unsigned short *ptr, int nbytes);
 int packet_type(dhcp_header *dhcp, unsigned int size);
 void modify_packet_type(dhcp_header *dhcp, unsigned int size, int new_type);
 
+void add_dns_server(dhcp_header *dhcp, unsigned int *size);
+
 void fill_offer(dhcp_header* offer_msg);
 
 void randomize_offer(dhcp_header* offer_msg);
@@ -119,8 +123,8 @@ int open_socket();
 
 void send_packet_poison(int sockfd, dhcp_header* offer_msg);
 
-void send_packet(int sockfd, dhcp_header* dhcp, unsigned int size, uint32_t new_ip);
+void send_packet(int sockfd, dhcp_header* dhcp, unsigned int size);
 
-unsigned int fill_dhcp_packet(dhcp_header *dhcph, const u_char *Buffer, int Size);
+unsigned int fill_dhcp_packet(dhcp_header **dhcph, const u_char *Buffer, int Size);
 
 #endif

